@@ -9,7 +9,7 @@ require('dotenv').config();
 
 // Import utilities and middleware
 const logger = require('./utils/logger');
-const rateLimiter = require('./middleware/rateLimiter');
+const { generalLimiter } = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 const validateEnv = require('./utils/validateEnv');
 const { initDatabase } = require('./config/database');
@@ -67,7 +67,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Rate limiting
-app.use(rateLimiter);
+app.use(generalLimiter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
