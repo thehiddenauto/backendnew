@@ -1,0 +1,114 @@
+const express = require('express');
+const { authenticateToken } = require('../middleware/auth');
+const { upload, uploadFile, generateFileKey, getUserStorageStats } = require('../services/storageService');
+const logger = require('../utils/logger');
+
+const router = express.Router();
+
+// @route   POST /api/upload/avatar
+// @desc    Upload user avatar
+// @access  Private
+router.post('/avatar', [
+  authenticateToken,
+  upload.single('avatar')
+], async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded'
+      });
+    }
+
+    const { buffer, mimetype, originalname } = req.file;
+    
+    // Validate file type
+    if (!mimetype.startsWith('image/')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only image files are allowed'
+      });
+    }
+
+    // Generate file key
+    const fileKey = generateFileKey(req.userId, 'avatars', originalname);
+    
+    // Upload to storage
+    const fileUrl = await uploadFile(buffer, fileKey, mimetype, {
+      userId: req.userId,
+      type: 'avatar'
+    });
+
+    // Update user avatar
+    await req.user.update({ avatar: fileUrl });
+
+    logger.info(`Avatar uploaded for user ${req.userId}: ${fileKey}`);
+
+    res.json({
+      success: true,
+      message: 'Avatar uploaded successfully',
+      data: {
+        url: fileUrl,
+        key: fileKey
+      }
+    });
+
+  } catch (error) {
+    logger.error('Avatar upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload avatar',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Upload failed'
+    });
+  }
+});
+
+// @route   POST /api/upload/media
+// @desc    Upload media files (images, videos, audio)
+// @access  Private
+router.post('/media', [
+  authenticateToken,
+  upload.array('files', 5) // Max 5 files
+], async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No files uploaded'
+      });
+    }
+
+    const uploadPromises = req.files.map(async (file) => {
+      const { buffer, mimetype, originalname, size } = file;
+      
+      // Generate file key
+      const fileKey = generateFileKey(req.userId, 'media', originalname);
+      
+      try {
+        // Upload to storage
+        const fileUrl = await uploadFile(buffer, fileKey, mimetype, {
+          userId: req.userId,
+          type: 'media',
+          originalName: originalname,
+          size
+        });
+
+        return {
+          success: true,
+          originalName: originalname,
+          url: fileUrl,
+          key: fileKey,
+          size,
+          type: mimetype
+        };
+      } catch (uploadError) {
+        logger.error(`Failed to upload ${originalname}:`, uploadError);
+        return {
+          success: false,
+          originalName: originalname,
+          error: uploadError.message
+        };
+      }
+    });
+
+    const results = await Promise.all(uploa
