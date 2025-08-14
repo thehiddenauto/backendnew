@@ -180,4 +180,46 @@ module.exports = (sequelize, DataTypes) => {
       },
       order: [['usage', 'DESC'], ['rating', 'DESC']],
       limit,
-      include
+      include: [{
+        model: sequelize.models.User,
+        as: 'user',
+        attributes: ['firstName', 'lastName', 'avatar']
+      }]
+    });
+  };
+
+  Script.findByCategory = function(category, limit = 20) {
+    return this.findAll({
+      where: { 
+        category,
+        isPublic: true
+      },
+      order: [['rating', 'DESC'], ['usage', 'DESC']],
+      limit
+    });
+  };
+
+  Script.searchScripts = function(query, userId = null) {
+    const whereClause = {
+      [sequelize.Op.or]: [
+        { title: { [sequelize.Op.iLike]: `%${query}%` } },
+        { content: { [sequelize.Op.iLike]: `%${query}%` } },
+        { tags: { [sequelize.Op.contains]: [query] } }
+      ]
+    };
+
+    if (userId) {
+      whereClause[sequelize.Op.or].push({ userId });
+    } else {
+      whereClause.isPublic = true;
+    }
+
+    return this.findAll({
+      where: whereClause,
+      order: [['rating', 'DESC'], ['usage', 'DESC']],
+      limit: 50
+    });
+  };
+
+  return Script;
+};
