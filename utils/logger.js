@@ -1,4 +1,23 @@
 const winston = require('winston');
+const fs = require('fs');
+const path = require('path');
+
+// Create logs directory if it doesn't exist (safe for production)
+const createLogsDirectory = () => {
+  try {
+    const logsDir = path.join(__dirname, '..', 'logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    return logsDir;
+  } catch (error) {
+    // If we can't create logs directory, just use console logging
+    console.warn('Could not create logs directory, using console only:', error.message);
+    return null;
+  }
+};
+
+const logsDir = createLogsDirectory();
 
 // Define log levels
 const levels = {
@@ -23,34 +42,52 @@ winston.addColors(colors);
 // Define log format
 const format = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
-  winston.format.colorize({ all: true }),
-  winston.format.printf((info) => `${info.timestamp} ${info.level}: ${info.message}`)
+  winston.format.errors({ stack: true }),
+  winston.format.printf((info) => {
+    let message = `${info.timestamp} ${info.level}: ${info.message}`;
+    if (info.stack) {
+      message += `\n${info.stack}`;
+    }
+    return message;
+  })
 );
 
-// Define which transports the logger must use
+// Start with console transport
 const transports = [
   new winston.transports.Console({
     format: winston.format.combine(
       winston.format.colorize(),
       format
     )
-  }),
-  new winston.transports.File({
-    filename: 'logs/error.log',
-    level: 'error',
-    format: winston.format.combine(
-      winston.format.uncolorize(),
-      winston.format.json()
-    )
-  }),
-  new winston.transports.File({
-    filename: 'logs/all.log',
-    format: winston.format.combine(
-      winston.format.uncolorize(),
-      winston.format.json()
-    )
   })
 ];
+
+// Add file transports only if logs directory exists
+if (logsDir) {
+  try {
+    transports.push(
+      new winston.transports.File({
+        filename: path.join(logsDir, 'error.log'),
+        level: 'error',
+        format: winston.format.combine(
+          winston.format.uncolorize(),
+          winston.format.json()
+        ),
+        handleExceptions: true
+      }),
+      new winston.transports.File({
+        filename: path.join(logsDir, 'all.log'),
+        format: winston.format.combine(
+          winston.format.uncolorize(),
+          winston.format.json()
+        ),
+        handleExceptions: true
+      })
+    );
+  } catch (error) {
+    console.warn('Could not initialize file loggers:', error.message);
+  }
+}
 
 // Create the logger
 const logger = winston.createLogger({
@@ -58,14 +95,21 @@ const logger = winston.createLogger({
   levels,
   format,
   transports,
-  exitOnError: false
+  exitOnError: false,
+  handleExceptions: true,
+  handleRejections: true
 });
 
-// If we're not in production, log to the console
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple()
-  }));
+// Handle uncaught exceptions and rejections
+if (process.env.NODE_ENV === 'production') {
+  logger.exceptions.handle(
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  );
 }
 
 module.exports = logger;
