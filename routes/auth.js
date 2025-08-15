@@ -2,17 +2,27 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { models } = require('../config/database');
-const { createClient } = require('@supabase/supabase-js');
 const logger = require('../utils/logger');
 const { sendWelcomeEmail, sendPasswordResetEmail } = require('../utils/email');
 
 const router = express.Router();
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+// Initialize Supabase client only if credentials are available
+let supabase = null;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    );
+    logger.info('Supabase client initialized');
+  } catch (error) {
+    logger.warn('Failed to initialize Supabase client:', error.message);
+  }
+} else {
+  logger.warn('Supabase credentials not provided. Supabase integration disabled.');
+}
 
 // Validation middleware
 const registerValidation = [
@@ -71,24 +81,28 @@ router.post('/register', registerValidation, async (req, res) => {
       lastName
     });
 
-    // Create user in Supabase Auth
-    try {
-      const { data: supabaseUser, error: supabaseError } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          firstName,
-          lastName,
-          dbUserId: user.id
-        }
-      });
+    // Create user in Supabase Auth (if available)
+    if (supabase) {
+      try {
+        const { data: supabaseUser, error: supabaseError } = await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: {
+            firstName,
+            lastName,
+            dbUserId: user.id
+          }
+        });
 
-      if (supabaseError) {
-        logger.warn('Supabase user creation failed:', supabaseError);
+        if (supabaseError) {
+          logger.warn('Supabase user creation failed:', supabaseError);
+        } else {
+          logger.info('User created in Supabase:', supabaseUser.user?.id);
+        }
+      } catch (supabaseError) {
+        logger.warn('Supabase integration error:', supabaseError);
       }
-    } catch (supabaseError) {
-      logger.warn('Supabase integration error:', supabaseError);
     }
 
     // Create default subscription
@@ -101,7 +115,7 @@ router.post('/register', registerValidation, async (req, res) => {
     // Generate JWT token
     const token = generateToken(user.id);
 
-    // Send welcome email
+    // Send welcome email (if email service is configured)
     try {
       await sendWelcomeEmail(user.email, user.firstName);
     } catch (emailError) {
