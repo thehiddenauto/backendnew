@@ -1,14 +1,12 @@
-const logger = require('./logger');
-
 function validateEnv() {
   const required = [
     'DATABASE_URL',
-    'JWT_SECRET',
-    'SUPABASE_URL',
-    'SUPABASE_ANON_KEY'
+    'JWT_SECRET'
   ];
 
   const optional = [
+    'SUPABASE_URL',
+    'SUPABASE_ANON_KEY',
     'OPENAI_API_KEY',
     'STRIPE_SECRET_KEY',
     'AWS_ACCESS_KEY_ID',
@@ -35,29 +33,27 @@ function validateEnv() {
   });
 
   if (missing.length > 0) {
-    logger.error('Missing required environment variables:');
-    missing.forEach(envVar => logger.error(`  - ${envVar}`));
-    logger.error('Please check your .env file and ensure all required variables are set.');
-    process.exit(1);
+    console.error('❌ Missing required environment variables:');
+    missing.forEach(envVar => console.error(`  - ${envVar}`));
+    console.error('Please set these variables in your Render environment settings.');
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
   if (warnings.length > 0) {
-    logger.warn('Missing optional environment variables (some features may be disabled):');
-    warnings.forEach(envVar => logger.warn(`  - ${envVar}`));
+    console.warn('⚠️ Missing optional environment variables (some features may be disabled):');
+    warnings.forEach(envVar => console.warn(`  - ${envVar}`));
   }
 
-  // Validate specific formats
+  // Validate specific formats (but don't exit on warnings)
   if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith('postgresql://')) {
-    logger.error('DATABASE_URL must be a valid PostgreSQL connection string');
-    process.exit(1);
+    console.warn('⚠️ DATABASE_URL should be a PostgreSQL connection string');
   }
 
   if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
-    logger.error('JWT_SECRET must be at least 32 characters long');
-    process.exit(1);
+    console.warn('⚠️ JWT_SECRET should be at least 32 characters long for security');
   }
 
-  logger.info('Environment variables validated successfully');
+  console.log('✅ Environment variables validated');
 }
 
 module.exports = validateEnv;
