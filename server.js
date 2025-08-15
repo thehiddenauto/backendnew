@@ -6,6 +6,8 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 // Import utilities and middleware
@@ -25,6 +27,12 @@ const uploadRoutes = require('./routes/upload');
 // Initialize Express app
 const app = express();
 const httpServer = createServer(app);
+
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
 // Initialize Socket.IO
 const io = new Server(httpServer, {
