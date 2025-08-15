@@ -10,7 +10,7 @@ require('dotenv').config();
 // Import utilities and middleware
 const logger = require('./utils/logger');
 const { generalLimiter } = require('./middleware/ratelimiter');
-const errorHandler = require('./middleware/errorHandler');
+const errorHandler = require('./middleware/errorhandlers');
 const validateEnv = require('./utils/validateEnv');
 const { initDatabase } = require('./config/database');
 
