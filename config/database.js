@@ -18,50 +18,51 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   }
 });
 
-// Import models with correct file names
-const User = require('../models/User');
-const Video = require('../models/videos'); // matches your actual file name
-const Script = require('../models/script'); // matches your actual file name  
-const Subscription = require('../models/subscription'); // matches your actual file name
-const Usage = require('../models/usage'); // matches your actual file name
-
 // Initialize models
-const models = {
-  User: User(sequelize, Sequelize.DataTypes),
-  Video: Video(sequelize, Sequelize.DataTypes),
-  Script: Script(sequelize, Sequelize.DataTypes),
-  Subscription: Subscription(sequelize, Sequelize.DataTypes),
-  Usage: Usage(sequelize, Sequelize.DataTypes)
-};
+let models = null;
 
-// Define associations
-Object.keys(models).forEach(modelName => {
-  if (models[modelName].associate) {
-    models[modelName].associate(models);
+function initModels() {
+  if (models) return models;
+
+  try {
+    const User = require('../models/User')(sequelize, Sequelize.DataTypes);
+    const Video = require('../models/videos')(sequelize, Sequelize.DataTypes);
+    const Script = require('../models/script')(sequelize, Sequelize.DataTypes);
+    const Subscription = require('../models/subscription')(sequelize, Sequelize.DataTypes);
+    const Usage = require('../models/usage')(sequelize, Sequelize.DataTypes);
+
+    // Set up associations
+    User.hasMany(Video, { foreignKey: 'userId', as: 'videos' });
+    Video.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+    User.hasMany(Script, { foreignKey: 'userId', as: 'scripts' });
+    Script.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+    Video.belongsTo(Script, { foreignKey: 'scriptId', as: 'script' });
+    Script.hasMany(Video, { foreignKey: 'scriptId', as: 'videos' });
+
+    User.hasOne(Subscription, { foreignKey: 'userId', as: 'subscription' });
+    Subscription.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+    User.hasMany(Usage, { foreignKey: 'userId', as: 'usage' });
+    Usage.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+    models = { User, Video, Script, Subscription, Usage };
+    return models;
+  } catch (error) {
+    console.error('Model initialization error:', error);
+    throw error;
   }
-});
-
-// Set up associations
-models.User.hasMany(models.Video, { foreignKey: 'userId', as: 'videos' });
-models.Video.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
-
-models.User.hasMany(models.Script, { foreignKey: 'userId', as: 'scripts' });
-models.Script.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
-
-models.Video.belongsTo(models.Script, { foreignKey: 'scriptId', as: 'script' });
-models.Script.hasMany(models.Video, { foreignKey: 'scriptId', as: 'videos' });
-
-models.User.hasOne(models.Subscription, { foreignKey: 'userId', as: 'subscription' });
-models.Subscription.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
-
-models.User.hasMany(models.Usage, { foreignKey: 'userId', as: 'usage' });
-models.Usage.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
+}
 
 // Database connection and synchronization
 async function initDatabase() {
   try {
     await sequelize.authenticate();
     console.log('Database connection established successfully');
+    
+    // Initialize models
+    initModels();
     
     // Sync models in development
     if (process.env.NODE_ENV === 'development') {
@@ -89,7 +90,9 @@ async function testConnection() {
 
 module.exports = {
   sequelize,
-  models,
+  get models() { 
+    return initModels();
+  },
   initDatabase,
   testConnection
 };
