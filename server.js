@@ -3,14 +3,13 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
 // Import utilities and middleware
 const logger = require('./utils/logger');
-const { generalLimiter } = require('./middleware/ratelimiter');
-const errorHandler = require('./middleware/errorhandlers');
 const validateEnv = require('./utils/validateEnv');
 const { initDatabase } = require('./config/database');
 
@@ -37,7 +36,12 @@ const io = new Server(httpServer, {
 });
 
 // Validate environment variables
-validateEnv();
+try {
+  validateEnv();
+} catch (error) {
+  console.error('Environment validation failed:', error.message);
+  process.exit(1);
+}
 
 // Security middleware
 app.use(helmet({
@@ -62,11 +66,22 @@ app.use(cors({
 
 // General middleware
 app.use(compression());
-app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } }));
+app.use(morgan('combined', { stream: { write: msg => console.log(msg.trim()) } }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Rate limiting
+// Rate limiting (inline to avoid import issues)
+const generalLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || 15) * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || 100),
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 app.use(generalLimiter);
 
 // Health check endpoint
@@ -96,20 +111,31 @@ app.use('*', (req, res) => {
   });
 });
 
-// Error handling middleware
-app.use(errorHandler);
+// Error handling middleware (inline to avoid import issues)
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  
+  const statusCode = err.statusCode || 500;
+  const message = process.env.NODE_ENV === 'development' ? err.message : 'Internal server error';
+  
+  res.status(statusCode).json({
+    success: false,
+    message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
+  console.log(`Client connected: ${socket.id}`);
   
   socket.on('join-room', (userId) => {
     socket.join(`user-${userId}`);
-    logger.info(`User ${userId} joined room`);
+    console.log(`User ${userId} joined room`);
   });
 
   socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
+    console.log(`Client disconnected: ${socket.id}`);
   });
 });
 
@@ -122,39 +148,39 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   try {
     await initDatabase();
-    logger.info('Database initialized successfully');
+    console.log('Database initialized successfully');
     
     httpServer.listen(PORT, () => {
-      logger.info(`🚀 Server running on port ${PORT}`);
-      logger.info(`🌍 Environment: ${process.env.NODE_ENV}`);
-      logger.info(`📡 Health check: http://localhost:${PORT}/health`);
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+      console.log(`📡 Health check: http://localhost:${PORT}/health`);
     });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 }
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
+  console.log('SIGTERM received, shutting down gracefully');
   httpServer.close(() => {
-    logger.info('Process terminated');
+    console.log('Process terminated');
     process.exit(0);
   });
 });
 
 process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
+  console.log('SIGINT received, shutting down gracefully');
   httpServer.close(() => {
-    logger.info('Process terminated');
+    console.log('Process terminated');
     process.exit(0);
   });
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Promise Rejection:', err);
+  console.error('Unhandled Promise Rejection:', err);
   httpServer.close(() => {
     process.exit(1);
   });
