@@ -18,7 +18,7 @@ process.on('uncaughtException', (err) => {
 });
 
 // Wrap require statements in try-catch
-let validateEnv, initDatabase, logger;
+let validateEnv, logger;
 
 try {
   require('dotenv').config();
@@ -48,15 +48,6 @@ try {
   console.error('❌ Failed to load validateEnv:', error.message);
   // Continue without validation
   validateEnv = () => {};
-}
-
-try {
-  const db = require('./config/database');
-  initDatabase = db.initDatabase;
-  console.log('✅ Database config loaded');
-} catch (error) {
-  console.error('❌ Failed to load database config:', error.message);
-  process.exit(1);
 }
 
 // Import routes with error handling
@@ -101,8 +92,8 @@ const io = new Server(httpServer, {
   }
 });
 
-// Basic environment check
-const requiredEnvVars = ['DATABASE_URL', 'JWT_SECRET'];
+// Basic environment check (only JWT_SECRET required now)
+const requiredEnvVars = ['JWT_SECRET'];
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
 if (missingVars.length > 0) {
@@ -119,8 +110,8 @@ try {
   validateEnv();
   console.log('✅ Environment validation passed');
 } catch (error) {
-  console.error('❌ Environment validation failed:', error.message);
-  // Don't exit here, continue with warnings
+  console.warn('⚠️ Environment validation warning:', error.message);
+  // Continue with warnings
 }
 
 // Security middleware
@@ -175,30 +166,35 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     service: 'Influencore Backend',
     version: '1.0.0',
-    environment: process.env.NODE_ENV || 'unknown'
+    environment: process.env.NODE_ENV || 'unknown',
+    database: 'disabled_temporarily'
   });
 });
 
-// API routes
-try {
-  app.use('/api/auth', authRoutes);
-  app.use('/api/users', userRoutes);
-  app.use('/api/videos', videoRoutes);
-  app.use('/api/scripts', scriptRoutes);
-  app.use('/api/payments', paymentRoutes);
-  app.use('/api/demo', demoRoutes);
-  app.use('/api/upload', uploadRoutes);
-  console.log('✅ Routes configured');
-} catch (error) {
-  console.error('❌ Failed to configure routes:', error.message);
-  process.exit(1);
-}
+// Demo-only routes (no database required)
+app.use('/api/demo', demoRoutes);
+
+// Temporary message for other routes
+app.use('/api/*', (req, res) => {
+  res.status(503).json({
+    success: false,
+    message: 'Backend is running! Database setup in progress. Demo endpoints are available at /api/demo/*',
+    availableEndpoints: [
+      'GET /health - Health check',
+      'POST /api/demo/generate-video - Generate demo video',
+      'POST /api/demo/generate-script - Generate demo script',
+      'GET /api/demo/showcase - View showcase videos',
+      'GET /api/demo/features - View available features'
+    ]
+  });
+});
 
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route ${req.originalUrl} not found`
+    message: `Route ${req.originalUrl} not found`,
+    hint: 'Try /health or /api/demo/* endpoints'
   });
 });
 
@@ -233,28 +229,23 @@ io.on('connection', (socket) => {
 // Make io available to routes
 app.set('io', io);
 
-// Initialize database and start server
+// Start server WITHOUT database
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   try {
-    console.log('🚀 Starting server initialization...');
-    
-    // Test database connection first
-    if (initDatabase) {
-      console.log('📊 Connecting to database...');
-      await initDatabase();
-      console.log('✅ Database connected successfully');
-    } else {
-      console.warn('⚠️ No database initialization function available');
-    }
+    console.log('🚀 Starting server without database...');
+    console.log('⚠️ Database connection skipped - demo mode only');
     
     // Start HTTP server
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`📡 Health check: http://localhost:${PORT}/health`);
-      console.log('🎉 Server started successfully!');
+      console.log(`🎬 Demo video: POST http://localhost:${PORT}/api/demo/generate-video`);
+      console.log(`📝 Demo script: POST http://localhost:${PORT}/api/demo/generate-script`);
+      console.log('🎉 Server started successfully in DEMO MODE!');
+      console.log('💡 Set up DATABASE_URL environment variable to enable full functionality');
     });
     
   } catch (error) {
@@ -283,12 +274,11 @@ process.on('SIGINT', () => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED PROMISE REJECTION! 💥 Shutting down...');
+  console.error('UNHANDLED PROMISE REJECTION! 💥');
   console.error('Error:', err.name, err.message);
   console.error('Stack:', err.stack);
-  httpServer.close(() => {
-    process.exit(1);
-  });
+  // Don't exit in demo mode
+  console.log('Continuing in demo mode...');
 });
 
 // Start the server
