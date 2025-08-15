@@ -1,10 +1,9 @@
 const { Sequelize } = require('sequelize');
-const logger = require('../utils/logger');
 
 // Database configuration
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: process.env.NODE_ENV === 'development' ? (msg) => logger.debug(msg) : false,
+  logging: process.env.NODE_ENV === 'development' ? console.log : false,
   pool: {
     max: 10,
     min: 0,
@@ -19,12 +18,12 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
   }
 });
 
-// Import models
+// Import models with correct file names
 const User = require('../models/User');
-const Video = require('../models/Video');
-const Script = require('../models/Script');
-const Subscription = require('../models/Subscription');
-const Usage = require('../models/Usage');
+const Video = require('../models/videos'); // matches your actual file name
+const Script = require('../models/script'); // matches your actual file name  
+const Subscription = require('../models/subscription'); // matches your actual file name
+const Usage = require('../models/usage'); // matches your actual file name
 
 // Initialize models
 const models = {
@@ -62,17 +61,17 @@ models.Usage.belongsTo(models.User, { foreignKey: 'userId', as: 'user' });
 async function initDatabase() {
   try {
     await sequelize.authenticate();
-    logger.info('Database connection established successfully');
+    console.log('Database connection established successfully');
     
     // Sync models in development
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ alter: true });
-      logger.info('Database models synchronized');
+      console.log('Database models synchronized');
     }
     
     return sequelize;
   } catch (error) {
-    logger.error('Unable to connect to database:', error);
+    console.error('Unable to connect to database:', error);
     throw error;
   }
 }
@@ -83,7 +82,7 @@ async function testConnection() {
     await sequelize.authenticate();
     return true;
   } catch (error) {
-    logger.error('Database connection test failed:', error);
+    console.error('Database connection test failed:', error);
     return false;
   }
 }
