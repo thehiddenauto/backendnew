@@ -2,7 +2,6 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { models } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
-const { uploadFile, generateFileKey } = require('../services/storageService');
 const logger = require('../utils/logger');
 
 const router = express.Router();
