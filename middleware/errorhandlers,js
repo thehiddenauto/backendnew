@@ -61,13 +61,13 @@ const handleCastErrorDB = (err) => {
 };
 
 const handleDuplicateFieldsDB = (err) => {
-  const value = err.errmsg.match(/(["'])(\\?.)*?\1/)[0];
+  const value = err.errmsg?.match(/(["'])(\\?.)*?\1/)?.[0] || 'duplicate value';
   const message = `Duplicate field value: ${value}. Please use another value!`;
   return new ValidationError(message);
 };
 
 const handleValidationErrorDB = (err) => {
-  const errors = Object.values(err.errors).map(el => el.message);
+  const errors = Object.values(err.errors || {}).map(el => el.message);
   const message = `Invalid input data. ${errors.join('. ')}`;
   return new ValidationError(message);
 };
@@ -79,13 +79,13 @@ const handleJWTExpiredError = () =>
   new AuthenticationError('Your token has expired! Please log in again.');
 
 const handleSequelizeValidationError = (err) => {
-  const errors = err.errors.map(e => e.message);
+  const errors = err.errors?.map(e => e.message) || ['Validation error'];
   const message = `Validation error: ${errors.join(', ')}`;
   return new ValidationError(message);
 };
 
 const handleSequelizeUniqueConstraintError = (err) => {
-  const field = err.errors[0]?.path || 'field';
+  const field = err.errors?.[0]?.path || 'field';
   const message = `${field} already exists. Please use a different value.`;
   return new ConflictError(message);
 };
@@ -93,6 +93,11 @@ const handleSequelizeUniqueConstraintError = (err) => {
 const handleSequelizeForeignKeyConstraintError = (err) => {
   const message = 'Invalid reference to related resource';
   return new ValidationError(message);
+};
+
+const handleSequelizeConnectionError = (err) => {
+  const message = 'Database connection failed';
+  return new ExternalServiceError(message);
 };
 
 // Send error response in development
@@ -171,6 +176,7 @@ const errorHandler = (err, req, res, next) => {
     if (error.name === 'SequelizeValidationError') error = handleSequelizeValidationError(error);
     if (error.name === 'SequelizeUniqueConstraintError') error = handleSequelizeUniqueConstraintError(error);
     if (error.name === 'SequelizeForeignKeyConstraintError') error = handleSequelizeForeignKeyConstraintError(error);
+    if (error.name === 'SequelizeConnectionError') error = handleSequelizeConnectionError(error);
 
     sendErrorProd(error, req, res);
   }
