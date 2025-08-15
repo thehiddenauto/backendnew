@@ -111,4 +111,101 @@ router.post('/media', [
       }
     });
 
-    const results = await Promise.all(uploa
+    const results = await Promise.all(uploadPromises);
+
+    // Log successful uploads
+    const successful = results.filter(r => r.success).length;
+    logger.info(`Media upload completed for user ${req.userId}: ${successful}/${results.length} files`);
+
+    res.json({
+      success: true,
+      message: `Upload completed: ${successful}/${results.length} files successful`,
+      data: { results }
+    });
+
+  } catch (error) {
+    logger.error('Media upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload media files',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Upload failed'
+    });
+  }
+});
+
+// @route   GET /api/upload/storage-stats
+// @desc    Get user storage statistics
+// @access  Private
+router.get('/storage-stats', authenticateToken, async (req, res) => {
+  try {
+    const stats = await getUserStorageStats(req.userId);
+
+    res.json({
+      success: true,
+      data: { stats }
+    });
+
+  } catch (error) {
+    logger.error('Get storage stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch storage statistics'
+    });
+  }
+});
+
+// @route   POST /api/upload/video-thumbnail
+// @desc    Upload video thumbnail
+// @access  Private
+router.post('/video-thumbnail', [
+  authenticateToken,
+  upload.single('thumbnail')
+], async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No thumbnail uploaded'
+      });
+    }
+
+    const { buffer, mimetype, originalname } = req.file;
+    
+    // Validate file type
+    if (!mimetype.startsWith('image/')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only image files are allowed for thumbnails'
+      });
+    }
+
+    // Generate file key
+    const fileKey = generateFileKey(req.userId, 'thumbnails', originalname);
+    
+    // Upload to storage
+    const fileUrl = await uploadFile(buffer, fileKey, mimetype, {
+      userId: req.userId,
+      type: 'thumbnail'
+    });
+
+    logger.info(`Thumbnail uploaded for user ${req.userId}: ${fileKey}`);
+
+    res.json({
+      success: true,
+      message: 'Thumbnail uploaded successfully',
+      data: {
+        url: fileUrl,
+        key: fileKey
+      }
+    });
+
+  } catch (error) {
+    logger.error('Thumbnail upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload thumbnail'
+    });
+  }
+});
+
+module.exports = router;
